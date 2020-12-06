@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -o pipefail -o errexit
+
+export prohibited_targets="
+    /
+    ${HOME}
+    ${HOME}/Desktop
+"
+
+################################################################################
+# The Description for -h|--help
+
+export description="
+NAME
+    trash - Delete a file or directory using the macOS system trash
+
+SYNOPSIS
+    trash [-h|--help]
+    trash <file to delete>
+
+DESCRIPTION
+    Given the path to a file or dir, runs a few safety checks before using the
+    MacOS system trash to delete it.  Will delete symlinks and not follow them,
+    deleted files can be restored through the MacOS trash UI, and prints the
+    absolute path of the file after deletion.  Also supports a dry-run mode when
+    the environment variable TRASH_DRY_RUN="true".
+
+    This utility has a 'prohibited_targets' list of paths that it will try to
+    reject, to add a small guardrail against accidental deletion.  Additional
+    directories or files can be added to this list at the top of this script's
+    file.  The currently list of prohibited targets is:
+    ${prohibited_targets}
+
+    Note: A file named -h or --help can be deleted by specifying it as a path,
+    such as './--help'.
+
+OUTPUT
+    * Returns 0 on success, printing a message to 'stderr' with the deleted
+        file's absolute path.
+    * Returns 1 and prints status messages to 'stderr' if an issue occurs at
+        any point.
+"
+
+################################################################################
+# get_absolute_path <path to file or dir>
+#
+# Given the path to a file or directory, try to find an absolute path to it.  This does NOT follow
+# symlinks to try and find the underlying file, but will just return the absolute path of the
+# symlink itself.  (Used while validating the path of the file to delete.)
+function get_absolute_path() {
+    local target="${1}"
+    local directory_path="$( dirname "${target}" )"
+    local file_name_and_extension="$( basename "${target}" )"
+
+    # If we're passed in a directory (and not a symlink to one)
+    if [[ -d "${target}" && ! -L "${target}" ]]; then
+        (
+            builtin cd "${target}"
+            pwd -P
+        )
+        return 0
+    fi
+
+    # Edge case for dirname "/" and basename "/" both returning "/"
+    if [[ "${directory_path}" == "/" && "${file_name_and_extension}" == "/" ]]; then
+        printf "%s\n" "/"
+        return 0
+    fi
+
+    # Edge case for dirname's behavior when passed in a top-level child of "/"
+    if [[ "${directory_path}" == "/" ]]; then
+        printf "%s\n" "/${file_name_and_extension}"
+        return 0
+    fi
+
+    (
+        builtin cd "${directory_path}"
+        printf "%s\n" "$(pwd -P)/${file_name_and_extension}"
+    )
+    return 0
+}
+
+function trash() {
+    local target="${1}"
+    local directory_path=""
+    local file_name_and_extension=""
+    local file_name=""
+    local file_extension=""
+    local absolute_path=""
+
+    if [[ "${target}" == "-h" || "${target}" == "--help" ]]; then
+        printf "%s\n" "${description}"
+        return 0
+    fi
+
+    ################################################################################
+    # Figure Out What To Trash
+
+    directory_path="$( dirname "${target}" )"
+    absolute_path=$( get_absolute_path "${target}" )
+    file_name_and_extension="$( basename "${target}" )"
+    file_name=$(      printf "%s\n" "${file_name_and_extension}" | cut -d "." -f1 )
+    file_extension=$( printf "%s\n" "${file_name_and_extension}" | cut -d "." -f2- -s )
+
+    ################################################################################
+    # Basic Safety Rails
+
+    if [[ "${target}" == "" ]]; then
+        printf "%s\n" "❌ A target must be specified." >&2
+        return 1
+    fi
+
+    # Since -e follows symlinks, we also need the -L check to handle the edge
+    # case when the given target is a symlinks to a nonexistent file.
+    if [[ ! -e "${absolute_path}" && ! -L "${absolute_path}" ]]; then
+        printf "%s\n" "❌ File or directory [ ${target} ] not found." >&2
+        return 1
+    fi
+
+    for prohibited_target in ${prohibited_targets}; do
+        if [[ "${absolute_path}" == "${prohibited_target}" || "${absolute_path}" == "${prohibited_target}/" ]]; then
+            printf "%s\n" "❌ Safety checks prohibit deletion of [ ${absolute_path} ]. " >&2
+            return 1
+        fi
+    done
+
+
+    if pwd -P | grep "${absolute_path}" > "/dev/null" 2>&1; then
+        printf "%s\n" "❌ Safety checks prohibit deletion of the current working directory. " >&2
+        return 1
+    fi
+
+    ################################################################################
+    # Actually Doing the Thing
+
+    if [[ "${TRASH_DRY_RUN}" == "true" ]]; then
+        printf "%s\n" "Dry-run enabled, so no files have been deleted." >&2
+        printf "%s\n" "- Target:        [${target}]" >&2
+        printf "%s\n" "- Name:          [${file_name}]" >&2
+        printf "%s\n" "- Extension:     [${file_extension}]" >&2
+        printf "%s\n" "- Absolute Path: [${absolute_path}]" >&2
+        return 0
+    fi
+
+    osascript -e "tell application \"Finder\" to delete POSIX file \"${absolute_path}\"" > "/dev/null"
+    exit_status="$?"
+
+    printf "%s\n" "💣 ${absolute_path}" >&2
+    return "${exit_status}"
+}
+
+trash $1
