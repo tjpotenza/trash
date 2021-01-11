@@ -96,7 +96,14 @@ function trash() {
     ################################################################################
     # Figure Out What To Trash
 
-    if [[ ! -e "${target}" ]]; then
+    if [[ "${target}" == "" ]]; then
+        printf "%s\n" "❌ A target must be specified." >&2
+        return 1
+    fi
+
+    # Since -e follows symlinks, we also need the -L check to handle the edge
+    # case when the given target is a symlink to a nonexistent file.
+    if [[ ! -e "${target}" && ! -L "${target}" ]]; then
         printf "%s\n" "❌ File or directory [ ${target} ] not found." >&2
         return 1
     fi
@@ -107,18 +114,6 @@ function trash() {
 
     ################################################################################
     # Basic Safety Rails
-
-    if [[ "${target}" == "" ]]; then
-        printf "%s\n" "❌ A target must be specified." >&2
-        return 1
-    fi
-
-    # Since -e follows symlinks, we also need the -L check to handle the edge
-    # case when the given target is a symlink to a nonexistent file.
-    if [[ ! -e "${absolute_path}" && ! -L "${absolute_path}" ]]; then
-        printf "%s\n" "❌ File or directory [ ${target} ] not found." >&2
-        return 1
-    fi
 
     for prohibited_target in ${prohibited_targets}; do
         if [[ "${absolute_path}" == "${prohibited_target}" || "${absolute_path}" == "${prohibited_target}/" ]]; then
