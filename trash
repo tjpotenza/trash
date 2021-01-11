@@ -96,11 +96,14 @@ function trash() {
     ################################################################################
     # Figure Out What To Trash
 
-    directory_path="$( dirname "${target}" )"
+    if [[ ! -e "${target}" ]]; then
+        printf "%s\n" "❌ File or directory [ ${target} ] not found." >&2
+        return 1
+    fi
+
+    directory_path=$( dirname "${target}" )
+    file_name_and_extension=$( basename "${target}" )
     absolute_path=$( get_absolute_path "${target}" )
-    file_name_and_extension="$( basename "${target}" )"
-    file_name=$(      printf "%s\n" "${file_name_and_extension}" | cut -d "." -f1 )
-    file_extension=$( printf "%s\n" "${file_name_and_extension}" | cut -d "." -f2- -s )
 
     ################################################################################
     # Basic Safety Rails
@@ -111,7 +114,7 @@ function trash() {
     fi
 
     # Since -e follows symlinks, we also need the -L check to handle the edge
-    # case when the given target is a symlinks to a nonexistent file.
+    # case when the given target is a symlink to a nonexistent file.
     if [[ ! -e "${absolute_path}" && ! -L "${absolute_path}" ]]; then
         printf "%s\n" "❌ File or directory [ ${target} ] not found." >&2
         return 1
