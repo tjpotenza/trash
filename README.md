@@ -18,12 +18,12 @@ ${HOME}/Desktop
 
 ## How?
 
-`$ ./trash some-file.md `
+`$ trash some-file.md `
 ```
 💣 /Users/tjpotenza/Desktop/Projects/trash/some-file.md
 ```
 
-`$ ./trash ~/Desktop`
+`$ trash ~/Desktop`
 ```
 ❌ Safety checks prohibit deletion of [ /Users/tjpotenza/Desktop ].
 ```
@@ -35,7 +35,7 @@ NAME
     ...
 ```
 
-`$ ./trash ./ghost.spooky`
+`$ trash ./ghost.spooky`
 ```
 ❌ File or directory [ ./ghost.spooky ] not found.
 ```
